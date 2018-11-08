@@ -434,6 +434,9 @@ dtb-$(CONFIG_ARCH_SDM632) += sdm632-rumi.dtb \
 	sdm632-mtp-s3.dtb	\
 	sdm632-qrd-sku4.dtb
 
+dtb-$(CONFIG_ARCH_SDM660) += sdm660-mtp_whyred.dtb  \
+	sdm636-mtp_whyred.dtb
+
 endif
 
 dtb-$(CONFIG_ARCH_SDM670_VM) += sdm670-vm.dtb
