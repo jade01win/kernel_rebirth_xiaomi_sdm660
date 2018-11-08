@@ -561,6 +561,14 @@ static struct msm_soc_info cpu_of_id[] = {
 	/* Hamster ID */
 	[306] = {MSM_CPU_HAMSTER, "MSMHAMSTER"},
 
+	/* 660 ID */
+	[317] = {MSM_CPU_660, "SDM660"},
+	[324] = {MSM_CPU_660, "SDA660"},
+
+	/* 636 ID */
+	[345] = {MSM_CPU_636, "SDM636"},
+	[346] = {MSM_CPU_636, "SDA636"},
+
 	/* falcon ID */
 	[317] = {MSM_CPU_FALCON, "MSMFALCON"},
 
@@ -1503,6 +1511,22 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_msmhamster()) {
 		dummy_socinfo.id = 306;
 		strlcpy(dummy_socinfo.build_id, "msmhamster - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_sdm660()) {
+		dummy_socinfo.id = 317;
+		strlcpy(dummy_socinfo.build_id, "sdm660 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_sda660()) {
+		dummy_socinfo.id = 324;
+		strlcpy(dummy_socinfo.build_id, "sda660 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_sdm636()) {
+		dummy_socinfo.id = 345;
+		strlcpy(dummy_socinfo.build_id, "sdm636 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_sda636()) {
+		dummy_socinfo.id = 346;
+		strlcpy(dummy_socinfo.build_id, "sda636 - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_msmfalcon()) {
 		dummy_socinfo.id = 317;
