@@ -166,6 +166,7 @@ config MSM_GPUCC_660
 	tristate "SDM660 Graphics Clock Controller"
 	select MSM_GCC_660
 	depends on COMMON_CLK_QCOM
+	help
 	  Support for the graphics clock controller on Qualcomm Technologies, Inc
 	  SDM660 devices.
 	  Say Y if you want to support graphics controller devices which will

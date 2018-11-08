@@ -212,8 +212,7 @@ config ARCH_SDM660
 	select COMMON_CLK
 	select COMMON_CLK_QCOM
 	select QCOM_GDSC
-	select QCOM_GDSC
-	help config
+	help
 	  This enables support for the SDM660 chipset.
 	  If you do not wish to build a kernel that runs
 	  on this chipset,say 'N' here.
