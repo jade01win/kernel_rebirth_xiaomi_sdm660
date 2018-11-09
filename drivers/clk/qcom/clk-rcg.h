@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2016-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -23,6 +23,8 @@ struct freq_tbl {
 	u8 pre_div;
 	u16 m;
 	u16 n;
+	unsigned long src_freq;
+#define FIXED_FREQ_SRC   0
 };
 
 /**
@@ -165,11 +167,13 @@ struct clk_rcg2 {
 	u32			cmd_rcgr;
 	u8			mnd_width;
 	u8			hid_width;
+	u8			safe_src_index;
 	const struct parent_map	*parent_map;
 	const struct freq_tbl	*freq_tbl;
 	unsigned long		current_freq;
 	bool			enable_safe_config;
 	struct clk_regmap	clkr;
+	struct notifier_block	clk_nb;
 	u8			flags;
 #define FORCE_ENABLE_RCG	BIT(0)
 #define DFS_ENABLE_RCG		BIT(1)
@@ -178,13 +182,16 @@ struct clk_rcg2 {
 #define to_clk_rcg2(_hw) container_of(to_clk_regmap(_hw), struct clk_rcg2, clkr)
 
 extern const struct clk_ops clk_rcg2_ops;
+extern const struct clk_ops clk_rcg2_floor_ops;
 extern const struct clk_ops clk_rcg2_shared_ops;
 extern const struct clk_ops clk_edp_pixel_ops;
 extern const struct clk_ops clk_byte_ops;
 extern const struct clk_ops clk_byte2_ops;
 extern const struct clk_ops clk_pixel_ops;
 extern const struct clk_ops clk_gfx3d_ops;
+extern const struct clk_ops clk_gfx3d_src_ops;
 extern const struct clk_ops clk_dp_ops;
+extern const struct clk_ops clk_esc_ops;
 
 extern int clk_rcg2_get_dfs_clock_rate(struct clk_rcg2 *clk,
 				struct device *dev, u8 rcg_flags);
