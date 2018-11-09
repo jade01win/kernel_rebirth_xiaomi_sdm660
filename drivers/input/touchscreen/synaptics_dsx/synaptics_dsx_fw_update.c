@@ -2,6 +2,7 @@
  * Synaptics DSX touchscreen driver
  *
  * Copyright (C) 2012-2016 Synaptics Incorporated. All rights reserved.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
  * Copyright (C) 2012 Alexandra Chin <alexandra.chin@tw.synaptics.com>
  * Copyright (C) 2012 Scott Lin <scott.lin@tw.synaptics.com>
@@ -41,26 +42,33 @@
 #include <linux/platform_device.h>
 #include <linux/input/synaptics_dsx.h>
 #include "synaptics_dsx_core.h"
+#include "../lct_tp_fm_info.h"
+#include "../lct_ctp_upgrade.h"
+#include <linux/proc_fs.h>
 
-#define FW_IHEX_NAME "synaptics/startup_fw_update.bin"
-#define FW_IMAGE_NAME "synaptics/startup_fw_update.img"
-/*
-*#define DO_STARTUP_FW_UPDATE
-*/
-/*
-*#ifdef DO_STARTUP_FW_UPDATE
-*#ifdef CONFIG_FB
-*#define WAIT_FOR_FB_READY
-*#define FB_READY_WAIT_MS 100
-*#define FB_READY_TIMEOUT_S 30
-*#endif
-*#endif
-*/
-/*
-*#define MAX_WRITE_SIZE 4096
-*/
+#define FW_IHEX_NAME "synaptics/tianma_td4310_miui_wayne.bin"
+#define FW_IMAGE_NAME "synaptics/tianma_td4310_miui_wayne.img"
 
-#define ENABLE_SYS_REFLASH false
+#define FW_IHEX_NAME_SHENCHAO "synaptics/shenchao_td4310_miui_wayne.bin"
+#define FW_IMAGE_NAME_SHENCHAO "synaptics/shenchao_td4310_miui_wayne.img"
+
+#define DO_STARTUP_FW_UPDATE
+
+#define SYNAPTICS_LOCK_DOWN_INFO
+
+#ifdef DO_STARTUP_FW_UPDATE
+#ifdef CONFIG_FB
+#define WAIT_FOR_FB_READY
+#define FB_READY_WAIT_MS 100
+#define FB_READY_TIMEOUT_S 30
+#endif
+#endif
+
+
+#define MAX_WRITE_SIZE 4096
+
+
+#define ENABLE_SYS_REFLASH true
 #define FORCE_UPDATE false
 #define DO_LOCKDOWN false
 
@@ -133,11 +141,12 @@
 #define ENTER_FLASH_PROG_WAIT_MS 20
 #define READ_CONFIG_WAIT_MS 20
 
+int tp_flag = 0;
+
 static int fwu_do_reflash(void);
 
 static int fwu_recovery_check_status(void);
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static ssize_t fwu_sysfs_show_image(struct file *data_file,
 		struct kobject *kobj, struct bin_attribute *attributes,
 		char *buf, loff_t pos, size_t count);
@@ -194,14 +203,14 @@ static ssize_t fwu_sysfs_guest_code_block_count_show(struct device *dev,
 static ssize_t fwu_sysfs_write_guest_code_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
 
+static ssize_t fwu_sysfs_read_panel_color_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 #ifdef SYNA_TDDI
 static ssize_t fwu_sysfs_write_lockdown_code_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
 
 static ssize_t fwu_sysfs_read_lockdown_code_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
-#endif
-
 #endif
 
 enum f34_version {
@@ -760,83 +769,111 @@ struct synaptics_rmi4_fwu_handle {
 	struct work_struct fwu_work;
 };
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static struct bin_attribute dev_attr_data = {
 	.attr = {
 		.name = "data",
-		.mode = 0664,
+		.mode = (S_IRUGO | S_IWUSR | S_IWGRP),
 	},
 	.size = 0,
 	.read = fwu_sysfs_show_image,
 	.write = fwu_sysfs_store_image,
 };
-#endif
 
 static struct device_attribute attrs[] = {
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
-	__ATTR(dorecovery, 0220,
+	__ATTR(dorecovery, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_do_recovery_store),
-	__ATTR(doreflash, 0220,
+	__ATTR(doreflash, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_do_reflash_store),
-	__ATTR(writeconfig, 0220,
+	__ATTR(writeconfig, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_write_config_store),
-	__ATTR(readconfig, 0220,
+	__ATTR(readconfig, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_read_config_store),
-	__ATTR(configarea, 0220,
+	__ATTR(configarea, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_config_area_store),
-	__ATTR(imagename, 0220,
+	__ATTR(imagename, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_image_name_store),
-	__ATTR(imagesize, 0220,
+	__ATTR(imagesize, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_image_size_store),
-	__ATTR(blocksize, 0444,
+	__ATTR(blocksize, S_IRUGO,
 			fwu_sysfs_block_size_show,
 			synaptics_rmi4_store_error),
-	__ATTR(fwblockcount, 0444,
+	__ATTR(fwblockcount, S_IRUGO,
 			fwu_sysfs_firmware_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(configblockcount, 0444,
+	__ATTR(configblockcount, S_IRUGO,
 			fwu_sysfs_configuration_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(dispconfigblockcount, 0444,
+	__ATTR(dispconfigblockcount, S_IRUGO,
 			fwu_sysfs_disp_config_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(permconfigblockcount, 0444,
+	__ATTR(permconfigblockcount, S_IRUGO,
 			fwu_sysfs_perm_config_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(blconfigblockcount, 0444,
+	__ATTR(blconfigblockcount, S_IRUGO,
 			fwu_sysfs_bl_config_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(uppblockcount, 0444,
+	__ATTR(uppblockcount, S_IRUGO,
 			fwu_sysfs_utility_parameter_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(guestcodeblockcount, 0444,
+	__ATTR(guestcodeblockcount, S_IRUGO,
 			fwu_sysfs_guest_code_block_count_show,
 			synaptics_rmi4_store_error),
-	__ATTR(writeguestcode, 0220,
+	__ATTR(writeguestcode, (S_IWUSR | S_IWGRP),
 			synaptics_rmi4_show_error,
 			fwu_sysfs_write_guest_code_store),
+	__ATTR(panelcolor, S_IRUGO,
+			fwu_sysfs_read_panel_color_show,
+			NULL),
 #ifdef SYNA_TDDI
-	__ATTR(lockdowncode, 0664,
+	__ATTR(lockdowncode, (S_IWUSR | S_IWGRP | S_IRUGO),
 			fwu_sysfs_read_lockdown_code_show,
 			fwu_sysfs_write_lockdown_code_store),
-#endif
 #endif
 };
 
 static struct synaptics_rmi4_fwu_handle *fwu;
 
+#if defined(SYNAPTICS_LOCK_DOWN_INFO)
+#define CTP_PROC_LOCKDOWN_FILE "tp_lockdown_info"
+DEFINE_MUTEX(fwu_sysfs_mutex);
+static struct proc_dir_entry *ctp_lockdown_status_proc;
+static char tp_lockdown_info[128];
+
+static int fwu_do_read_customer_serialization_data(void);
+
+static int ctp_lockdown_proc_show(struct seq_file *file, void *data)
+{
+	char temp[40] = {0};
+	fwu_do_read_customer_serialization_data();
+
+	sprintf(temp, "%s", tp_lockdown_info);
+	seq_printf(file, "%s", temp);
+
+	return 0;
+
+
+}
+
+static int ctp_lockdown_proc_open (struct inode *inode, struct file *file)
+{
+	return single_open(file, ctp_lockdown_proc_show, inode->i_private);
+}
+
+static const struct file_operations ctp_lockdown_proc_fops = {
+	.open = ctp_lockdown_proc_open,
+	.read = seq_read,
+};
+#endif
 DECLARE_COMPLETION(fwu_remove_complete);
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
-DEFINE_MUTEX(fwu_sysfs_mutex);
-#endif
+
 
 static void calculate_checksum(unsigned short *data, unsigned long len,
 		unsigned long *result)
@@ -3070,7 +3107,6 @@ static int fwu_check_dp_configuration_size(void)
 	return 0;
 }
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static int fwu_check_pm_configuration_size(void)
 {
 	unsigned short block_count;
@@ -3087,7 +3123,6 @@ static int fwu_check_pm_configuration_size(void)
 
 	return 0;
 }
-#endif
 
 static int fwu_check_bl_configuration_size(void)
 {
@@ -3455,7 +3490,6 @@ static int fwu_write_dp_configuration(void)
 	return fwu_write_configuration();
 }
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static int fwu_write_pm_configuration(void)
 {
 	fwu->config_area = PM_CONFIG_AREA;
@@ -3480,7 +3514,6 @@ static int fwu_write_tddi_lockdown_data(void)
 	rmi4_data->reset_device(rmi4_data, false);
 	return 0;
 }
-#endif
 #endif
 
 static int fwu_write_flash_configuration(void)
@@ -3770,7 +3803,6 @@ static int fwu_do_reflash(void)
 	return retval;
 }
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static int fwu_do_read_config(void)
 {
 	int retval;
@@ -3888,6 +3920,93 @@ exit:
 	return retval;
 }
 
+static int fwu_do_read_customer_serialization_data(void)
+{
+	int ii;
+	int retval = 0;
+	int block_count = 0;
+	char temp[40] = {0};
+	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
+
+	if (rmi4_data->sensor_sleep) {
+		dev_err(rmi4_data->pdev->dev.parent,
+				"%s: Sensor sleeping\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	if (!fwu->flash_properties.has_pm_config) {
+		dev_err(rmi4_data->pdev->dev.parent,
+				"%s: Permanent configuration not supported\n",
+				__func__);
+		return -EINVAL;
+	}
+
+	rmi4_data->stay_awake = true;
+
+	mutex_lock(&rmi4_data->rmi4_exp_init_mutex);
+
+	pr_notice("%s: Start of customer serialization aquirement process\n", __func__);
+
+		retval = fwu_read_flash_status();
+		if (retval < 0)
+			goto exit;
+/*
+		retval = fwu_enter_flash_prog();
+		if (retval < 0)
+			goto exit;
+*/
+		fwu->config_area = PM_CONFIG_AREA;
+		block_count = fwu->blkcount.pm_config;
+		if (block_count == 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Invalid block count\n",
+					__func__);
+			goto exit;
+		}
+		fwu->config_size = fwu->block_size * block_count;
+		pr_notice("%s: Block size = %d\n", __func__, fwu->block_size);
+		pr_notice("%s: Permanent config block count = %d\n", __func__, block_count);
+		pr_notice("%s: Permanent config size = %d\n", __func__, fwu->config_size);
+		dev_info(rmi4_data->pdev->dev.parent,
+				"%s: permanent config size = %d\n",
+				__func__, fwu->config_size);
+
+		retval = fwu_allocate_read_config_buf(fwu->config_size);
+		if (retval < 0) {
+
+			goto exit;
+		}
+
+		retval = fwu_read_f34_blocks(block_count,
+				CMD_READ_CONFIG);
+		if (retval < 0) {
+
+			goto exit;
+		}
+
+		for (ii = 0; ii < 10; ii++)
+			pr_notice("%s: Permanent config data[%d] = 0x%02x\n", __func__, ii, fwu->read_config_buf[ii]);
+
+ sprintf(temp, "%02x%02x%02x%02x%02x%02x%02x%02x", fwu->read_config_buf[0], fwu->read_config_buf[1], fwu->read_config_buf[2], fwu->read_config_buf[3], fwu->read_config_buf[4], fwu->read_config_buf[5], fwu->read_config_buf[6], fwu->read_config_buf[7]);
+printk("tp_lockdown info  : %s\n", temp);
+strcpy(tp_lockdown_info, temp);
+
+
+
+exit:
+
+	pr_notice("%s: End of customer serialization acquirement process\n", __func__);
+
+	mutex_unlock(&rmi4_data->rmi4_exp_init_mutex);
+
+	rmi4_data->stay_awake = false;
+
+	return retval;
+}
+
+
+
 #ifdef SYNA_TDDI
 static int fwu_do_read_tddi_lockdown_data(void)
 {
@@ -3967,8 +4086,6 @@ int set_tddi_lockdown_data(unsigned char *lockdown_data, unsigned short leng)
 	if (retval < 0)
 		goto exit;
 
-	blk_cnt = fwu->blkcount.tddi_lockdown_data;
-
 	fwu->config_size = fwu->blkcount.tddi_lockdown_data * fwu->block_size;
 	retval = fwu_allocate_read_config_buf(fwu->config_size);
 	if (retval < 0)
@@ -3997,7 +4114,6 @@ int set_tddi_lockdown_data(unsigned char *lockdown_data, unsigned short leng)
 exit:
 	return retval;
 }
-#endif
 #endif
 
 static int fwu_do_lockdown_v7(void)
@@ -4149,7 +4265,6 @@ static int fwu_do_restore_f51_cal_data(void)
 }
 #endif
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static int fwu_start_write_guest_code(void)
 {
 	int retval;
@@ -4355,7 +4470,6 @@ exit:
 
 	return retval;
 }
-#endif
 
 static int fwu_start_reflash(void)
 {
@@ -4364,6 +4478,8 @@ static int fwu_start_reflash(void)
 	bool do_rebuild = false;
 	const struct firmware *fw_entry = NULL;
 	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
+	unsigned char config_ver[20] = {0};
+	char fw_version[64];
 
 	if (rmi4_data->sensor_sleep) {
 		dev_err(rmi4_data->pdev->dev.parent,
@@ -4379,9 +4495,16 @@ static int fwu_start_reflash(void)
 	pr_notice("%s: Start of reflash process\n", __func__);
 
 	if (fwu->image == NULL) {
-		retval = secure_memcpy(fwu->image_name, MAX_IMAGE_NAME_LEN,
-				FW_IMAGE_NAME, sizeof(FW_IMAGE_NAME),
-				sizeof(FW_IMAGE_NAME));
+		if ((tp_lockdown_info[0] == '4')&&(tp_lockdown_info[1] == '1')) {
+			retval = secure_memcpy(fwu->image_name, MAX_IMAGE_NAME_LEN,
+					FW_IMAGE_NAME_SHENCHAO, sizeof(FW_IMAGE_NAME_SHENCHAO),
+					sizeof(FW_IMAGE_NAME_SHENCHAO));
+
+		} else {
+			retval = secure_memcpy(fwu->image_name, MAX_IMAGE_NAME_LEN,
+					FW_IMAGE_NAME, sizeof(FW_IMAGE_NAME),
+					sizeof(FW_IMAGE_NAME));
+		}
 		if (retval < 0) {
 			dev_err(rmi4_data->pdev->dev.parent,
 					"%s: Failed to copy image file name\n",
@@ -4578,6 +4701,20 @@ exit:
 
 	mutex_unlock(&rmi4_data->rmi4_exp_init_mutex);
 
+	rmi4_data->stay_awake = false;
+	synaptics_rmi4_reg_read(rmi4_data,
+			0x000c,
+			config_ver,
+			1);
+	printk("config_ver info =%02x\n", config_ver[0]);
+	memset(fw_version, 0, sizeof(fw_version));
+	sprintf(fw_version, "[FW]0x%02x,[IC]td4310", config_ver[0]);
+	if ((tp_lockdown_info[0] == '4')&&(tp_lockdown_info[1] == '1')) {
+		init_tp_fm_info(0, fw_version, "shenchao");
+		tp_flag = 1;
+	} else {
+		init_tp_fm_info(0, fw_version, "tianma");
+	}
 	rmi4_data->stay_awake = false;
 
 	return retval;
@@ -4987,7 +5124,6 @@ static void fwu_startup_fw_update_work(struct work_struct *work)
 }
 #endif
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 static ssize_t fwu_sysfs_show_image(struct file *data_file,
 		struct kobject *kobj, struct bin_attribute *attributes,
 		char *buf, loff_t pos, size_t count)
@@ -5060,7 +5196,7 @@ static ssize_t fwu_sysfs_do_recovery_store(struct device *dev,
 	if (!mutex_trylock(&fwu_sysfs_mutex))
 		return -EBUSY;
 
-	if (kstrtouint(buf, 10, &input) != 1) {
+	if (sscanf(buf, "%u", &input) != 1) {
 		retval = -EINVAL;
 		goto exit;
 	}
@@ -5108,7 +5244,7 @@ static ssize_t fwu_sysfs_do_reflash_store(struct device *dev,
 	if (!mutex_trylock(&fwu_sysfs_mutex))
 		return -EBUSY;
 
-	if (kstrtouint(buf, 10, &input) != 1) {
+	if (sscanf(buf, "%u", &input) != 1) {
 		retval = -EINVAL;
 		goto exit;
 	}
@@ -5171,7 +5307,7 @@ static ssize_t fwu_sysfs_write_config_store(struct device *dev,
 	if (!mutex_trylock(&fwu_sysfs_mutex))
 		return -EBUSY;
 
-	if (kstrtouint(buf, 10, &input) != 1) {
+	if (sscanf(buf, "%u", &input) != 1) {
 		retval = -EINVAL;
 		goto exit;
 	}
@@ -5221,7 +5357,7 @@ static ssize_t fwu_sysfs_read_config_store(struct device *dev,
 	unsigned int input;
 	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
 
-	if (kstrtouint(buf, 10, &input) != 1)
+	if (sscanf(buf, "%u", &input) != 1)
 		return -EINVAL;
 
 	if (input != 1)
@@ -5460,7 +5596,7 @@ static ssize_t fwu_sysfs_write_guest_code_store(struct device *dev,
 	if (!mutex_trylock(&fwu_sysfs_mutex))
 		return -EBUSY;
 
-	if (kstrtouint(buf, 10, &input) != 1) {
+	if (sscanf(buf, "%u", &input) != 1) {
 		retval = -EINVAL;
 		goto exit;
 	}
@@ -5501,6 +5637,39 @@ exit:
 	fwu->image = NULL;
 	mutex_unlock(&fwu_sysfs_mutex);
 	return retval;
+}
+
+static ssize_t fwu_sysfs_read_panel_color_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret = 0;
+
+	if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '1'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x31 WHITE\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '2'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x32 BLACK\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '3'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x33 RED\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '4'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x34 YELLOW\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '5'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x35 GREEN\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '6'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x36 PINK\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '7'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x37 PURPLE\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '8'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x38 GOLDEN\n");
+	else if ((tp_lockdown_info[4] == '3') && (tp_lockdown_info[5] == '9'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x39 SLIVER\n");
+	else if ((tp_lockdown_info[4] == '4') && (tp_lockdown_info[5] == '0'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x40 GRAY\n");
+	else if ((tp_lockdown_info[4] == '4') && (tp_lockdown_info[5] == '1'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x41 SLIVER BLUE\n");
+	else if ((tp_lockdown_info[4] == '4') && (tp_lockdown_info[5] == '2'))
+		ret = scnprintf(buf, PAGE_SIZE, "0x42 CORAL BLUE\n");
+
+	return ret;
 }
 
 #ifdef SYNA_TDDI
@@ -5567,7 +5736,7 @@ static ssize_t fwu_sysfs_write_lockdown_code_store(struct device *dev,
 
 	for (i = 0; i < lockdown_data_size; i++) {
 		memcpy(temp, (buf + 2 * i), sizeof(temp));
-		if (kstrtoint(temp, 16, &ld_val) == 1)
+		if (sscanf(temp, "%02x", &ld_val) == 1)
 			*(lockdown_data + i) = ld_val & 0xff;
 	}
 
@@ -5583,7 +5752,6 @@ static ssize_t fwu_sysfs_write_lockdown_code_store(struct device *dev,
 	mutex_unlock(&fwu_sysfs_mutex);
 	return count;
 }
-#endif
 #endif
 static void synaptics_rmi4_fwu_attn(struct synaptics_rmi4_data *rmi4_data,
 		unsigned char intr_mask)
@@ -5603,6 +5771,9 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 	unsigned char attr_count;
 	struct pdt_properties pdt_props;
 
+#if defined(SYNAPTICS_LOCK_DOWN_INFO)
+	unsigned char lockdown[20] = {0};
+#endif
 	if (fwu) {
 		dev_dbg(rmi4_data->pdev->dev.parent,
 				"%s: Handle already exists\n",
@@ -5675,6 +5846,20 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 			&fwu->fwu_work);
 #endif
 
+printk("before get_tddi_lockdown_data");
+
+	if (get_tddi_lockdown_data(lockdown, 20) < 0) {
+		printk("read lockdown fail\n");
+	}
+	printk("lockdown info =%02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x\n", lockdown[4], lockdown[5], lockdown[6], lockdown[7], lockdown[8], lockdown[9], lockdown[10], lockdown[11]);
+
+	sprintf(tp_lockdown_info, "%02x%02x%02x%02x%02x%02x%02x%02x\n", lockdown[4], lockdown[5], lockdown[6], lockdown[7], lockdown[8], lockdown[9], lockdown[10], lockdown[11]);
+
+	ctp_lockdown_status_proc = proc_create(CTP_PROC_LOCKDOWN_FILE, 0644, NULL, &ctp_lockdown_proc_fops);
+	if (ctp_lockdown_status_proc == NULL) {
+		printk("tpd, create_proc_entry ctp_lockdown_status_proc failed\n");
+	}
+
 #ifdef F51_DISCRETE_FORCE
 	fwu_read_flash_status();
 	if (!fwu->in_bl_mode) {
@@ -5687,7 +5872,6 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 	if (ENABLE_SYS_REFLASH == false)
 		return 0;
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 	retval = sysfs_create_bin_file(&rmi4_data->input_dev->dev.kobj,
 			&dev_attr_data);
 	if (retval < 0) {
@@ -5696,7 +5880,6 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 				__func__);
 		goto exit_free_mem;
 	}
-#endif
 
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		retval = sysfs_create_file(&rmi4_data->input_dev->dev.kobj,
@@ -5718,9 +5901,7 @@ exit_remove_attrs:
 				&attrs[attr_count].attr);
 	}
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 	sysfs_remove_bin_file(&rmi4_data->input_dev->dev.kobj, &dev_attr_data);
-#endif
 
 exit_free_mem:
 	kfree(fwu->image_name);
@@ -5762,9 +5943,7 @@ static void synaptics_rmi4_fwu_remove(struct synaptics_rmi4_data *rmi4_data)
 				&attrs[attr_count].attr);
 	}
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_EXTRA_SYSFS
 	sysfs_remove_bin_file(&rmi4_data->input_dev->dev.kobj, &dev_attr_data);
-#endif
 
 exit:
 	complete(&fwu_remove_complete);

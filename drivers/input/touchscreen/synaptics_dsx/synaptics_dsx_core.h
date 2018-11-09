@@ -62,14 +62,25 @@
 #define sstrtoul(...) strict_strtoul(__VA_ARGS__)
 #endif
 /*
-*#define F51_DISCRETE_FORCE
-*#ifdef F51_DISCRETE_FORCE
-*#define FORCE_LEVEL_ADDR 0x0419
-*#define FORCE_LEVEL_MAX 255
-*#define CAL_DATA_SIZE 144
-*#endif
-*#define SYNA_TDDI
+#define F51_DISCRETE_FORCE
+#ifdef F51_DISCRETE_FORCE
+#define FORCE_LEVEL_ADDR 0x0419
+#define FORCE_LEVEL_MAX 255
+#define CAL_DATA_SIZE 144
+#endif
+#define SYNA_TDDI
 */
+#define SYNA_TDDI
+#define SYN_DEBUG 1
+#define SYN_I2C_NAME "SYN-ts"
+
+#if SYN_DEBUG
+#define SYN_LOG(fmt, args...)    pr_err("[%s] %s %d: " fmt, SYN_I2C_NAME, __func__, __LINE__, ##args)
+#else
+#define SYN_LOG(fmt, args...)    pr_info("[%s] %s %d: " fmt, SYN_I2C_NAME, __func__, __LINE__, ##args)
+#endif
+#define SYN_ERR(fmt, args...)    pr_err("[%s] %s %d: " fmt, SYN_I2C_NAME, __func__, __LINE__, ##args)
+
 #define PDT_PROPS (0X00EF)
 #define PDT_START (0x00E9)
 #define PDT_END (0x00D0)
@@ -123,10 +134,6 @@
 #define MASK_3BIT 0x07
 #define MASK_2BIT 0x03
 #define MASK_1BIT 0x01
-
-#define PINCTRL_STATE_ACTIVE    "pmx_ts_active"
-#define PINCTRL_STATE_SUSPEND   "pmx_ts_suspend"
-#define PINCTRL_STATE_RELEASE   "pmx_ts_release"
 
 enum exp_fn {
 	RMI_DEV = 0,
@@ -368,12 +375,9 @@ struct synaptics_rmi4_data {
 	struct mutex rmi4_irq_enable_mutex;
 	struct delayed_work rb_work;
 	struct workqueue_struct *rb_workqueue;
-	struct pinctrl *ts_pinctrl;
-	struct pinctrl_state *pinctrl_state_active;
-	struct pinctrl_state *pinctrl_state_suspend;
-	struct pinctrl_state *pinctrl_state_release;
 #ifdef CONFIG_FB
 	struct notifier_block fb_notifier;
+	struct work_struct fb_notify_work;
 	struct work_struct reset_work;
 	struct workqueue_struct *reset_workqueue;
 #endif
@@ -407,8 +411,6 @@ struct synaptics_rmi4_data {
 	int force_min;
 	int force_max;
 	int set_wakeup_gesture;
-	int avdd_status;
-	int vdd_status;
 	bool flash_prog_mode;
 	bool irq_enabled;
 	bool fingers_on_2d;
@@ -428,7 +430,7 @@ struct synaptics_rmi4_data {
 			bool rebuild);
 	int (*irq_enable)(struct synaptics_rmi4_data *rmi4_data, bool enable,
 			bool attn_only);
-	int (*sleep_enable)(struct synaptics_rmi4_data *rmi4_data,
+	void (*sleep_enable)(struct synaptics_rmi4_data *rmi4_data,
 			bool enable);
 	void (*report_touch)(struct synaptics_rmi4_data *rmi4_data,
 			struct synaptics_rmi4_fn *fhandler);
