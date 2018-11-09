@@ -12,7 +12,12 @@
 
 #ifndef __MDSS_PLL_H
 #define __MDSS_PLL_H
+
+#ifdef CONFIG_FB_MSM_MDSS /* MDSS - FBDEV */
+#include <linux/mdss_io_util.h>
+#else /* SDE - DRM */
 #include <linux/sde_io_util.h>
+#endif
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/clk.h>
@@ -42,12 +47,16 @@
 			(base) + (offset))
 
 enum {
+	MDSS_DSI_PLL_8974,
+	MDSS_DSI_PLL_14NM,
+	MDSS_DP_PLL_14NM,
 	MDSS_DSI_PLL_10NM,
 	MDSS_DP_PLL_10NM,
 	MDSS_UNKNOWN_PLL,
 };
 
 enum {
+	MDSS_PLL_TARGET_8976,
 	MDSS_PLL_TARGET_8996,
 };
 
@@ -211,6 +220,7 @@ static inline bool is_gdsc_disabled(struct mdss_pll_resources *pll_res)
 		(!(readl_relaxed(pll_res->gdsc_base) & BIT(0)))) ? false : true;
 #else
 	return readl_relaxed(pll_res->gdsc_base) & BIT(31) ? false : true;
+#endif
 }
 
 static inline int mdss_pll_div_prepare(struct clk_hw *hw)
